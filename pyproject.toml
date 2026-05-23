@@ -26,7 +26,6 @@ dependencies = [
     "faster-whisper>=1.0.0",
     "funasr>=1.0.0",
     "numpy>=1.24.0",
-    "PyAudio>=0.2.13",
     "sounddevice>=0.4.6",
     "pynput>=1.7.6",
     "pyautogui>=0.9.54",
@@ -42,12 +41,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "pytest-mock>=3.12",
-    "pytest-cov>=4.0",
-    "pytest-qt>=4.4",
+audio = [
+    "PyAudio>=0.2.13",
 ]
 
 [project.scripts]
@@ -65,8 +60,8 @@ asyncio_mode = "auto"
 [tool.hatch.build.targets.wheel]
 packages = ["lingxi"]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
     "pytest-mock>=3.12",
