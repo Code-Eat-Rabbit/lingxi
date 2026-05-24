@@ -18,7 +18,6 @@ from PySide6.QtCore import Qt, QTimer, Signal, QObject
 
 # ── 灵犀模块 ──────────────────────────────────────────
 from lingxi.io.audio_recorder import AudioRecorder
-from lingxi.io.hotkey_manager import HotkeyManager, HotkeyDef
 from lingxi.io.text_injector import TextInjector
 from lingxi.data.config_store import ConfigStore
 from lingxi.data.history_store import HistoryStore
@@ -355,16 +354,62 @@ def main() -> None:
     hud = HUDManager()
 
     # ── 热键 ──────────────────────────────────────
-    hotkey = HotkeyManager()
+    # 直接使用 pynput keyboard.Listener 追踪按键。
+    RECORD_HOTKEY = {'cmd', 'shift', 'space'}
+    LONG_PRESS_MS = 500
+
+    _state = {'armed': False, 'timer': None}
+    _pressed: set[str] = set()
+
+    def _make_long_timer():
+        t = QTimer()
+        t.setSingleShot(True)
+        t.timeout.connect(lambda: pipeline.on_hotkey(True))
+        return t
+
+    def on_press(key):
+        try:
+            k = key.name if hasattr(key, 'name') else (
+                key.char if hasattr(key, 'char') else str(key)
+            )
+        except Exception:
+            return
+        k = k.lower()
+        _pressed.add(k)
+
+        if not _state['armed'] and RECORD_HOTKEY.issubset(_pressed):
+            _state['armed'] = True
+            _state['timer'] = _make_long_timer()
+            _state['timer'].start(LONG_PRESS_MS)
+
+    def on_release(key):
+        try:
+            k = key.name if hasattr(key, 'name') else (
+                key.char if hasattr(key, 'char') else str(key)
+            )
+        except Exception:
+            return
+        k = k.lower()
+
+        if _state['armed'] and k in RECORD_HOTKEY and not RECORD_HOTKEY.issubset(_pressed - {k}):
+            _state['armed'] = False
+            t = _state['timer']
+            if t and t.isActive():
+                t.stop()
+                pipeline.on_hotkey(False)  # 短按
+            _state['timer'] = None
+
+        _pressed.discard(k)
+
     try:
-        hotkey.register_default(pipeline.on_hotkey)
-        hotkey.start()
-        hotkey.attach_pynput_listener()
-        logger.info("pynput 全局热键监听已启动")
+        from pynput import keyboard as _kb
+        listener = _kb.Listener(on_press=on_press, on_release=on_release)
+        listener.start()
+        logger.info("pynput 热键监听已启动 (Cmd+Shift+Space)")
     except ImportError:
         logger.warning("pynput 未安装，请使用托盘菜单触发录音")
     except Exception as e:
-        logger.warning("pynput 启动失败: %s，请使用托盘菜单触发录音", e)
+        logger.warning("热键监听启动失败: %s，请使用托盘菜单触发录音", e)
 
     # ── 信号 → Overlay HUD ────────────────────────
     pipeline.recording_started.connect(hud.show_recording)
@@ -378,11 +423,9 @@ def main() -> None:
     # ── 清理 ──────────────────────────────────────
     signal.signal(signal.SIGINT, lambda sig, frame: app.quit())
     signal.signal(signal.SIGTERM, lambda sig, frame: app.quit())
-    app.aboutToQuit.connect(hotkey.stop)
+    app.aboutToQuit.connect(lambda: listener.stop() if listener else None)
 
-    logger.info(
-        f"{APP_NAME} 就绪 — 按 {HotkeyDef.default_for_platform()} 开始录音"
-    )
+    logger.info(f"{APP_NAME} 就绪 — Cmd+Shift+Space 录音 / 长按切换风格")
     exit_code = app.exec()
     sys.exit(exit_code)
 
