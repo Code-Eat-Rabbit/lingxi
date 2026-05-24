@@ -81,9 +81,13 @@ class HotkeyDef:
         return cls(key=key)
 
     @classmethod
-    def fn_command(cls) -> "HotkeyDef":
-        """创建 Fn+Command 热键（macOS 推荐，避免与 Spotlight 冲突）。"""
-        return cls(key=Key.FN.value, modifiers={Key.CMD.value})
+    def cmd_shift_space(cls) -> "HotkeyDef":
+        """创建 Cmd+Shift+Space 热键（macOS 推荐，避免与 Spotlight 冲突）。
+        
+        pynput 在 macOS 上无法捕获 Fn 键（硬件级按键），因此使用
+        Cmd+Shift+Space 作为替代方案。
+        """
+        return cls(key=Key.SPACE.value, modifiers={Key.CMD.value, Key.SHIFT.value})
 
     @classmethod
     def default_for_platform(cls) -> "HotkeyDef":
@@ -92,7 +96,7 @@ class HotkeyDef:
 
         system = platform.system()
         if system == "Darwin":
-            return cls.fn_command()  # macOS: Fn+Cmd (避免与 Cmd+Space 冲突)
+            return cls.cmd_shift_space()  # macOS: Cmd+Shift+Space
         else:
             return cls.ctrl()  # Windows/Linux: Ctrl+Space
 

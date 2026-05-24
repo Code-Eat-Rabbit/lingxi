@@ -114,7 +114,7 @@ Step 4: 热键与权限
 
 | 平台 | 默认热键 |
 |------|----------|
-| macOS | `Fn + Command` |
+| macOS | `Cmd + Shift + Space` |
 | Windows / Linux | `Ctrl + Space` |
 
 ```
@@ -159,7 +159,7 @@ Step 4: 热键与权限
 #### 长按选择风格
 
 ```
-长按 `Fn + Command` 500ms (macOS) / `Ctrl + Space` (Win/Linux)
+长按 `Cmd + Shift + Space` 500ms (macOS) / `Ctrl + Space` (Win/Linux)
       │
       ▼
   ┌─────────────────────┐
