@@ -81,13 +81,18 @@ class HotkeyDef:
         return cls(key=key)
 
     @classmethod
+    def fn_command(cls) -> "HotkeyDef":
+        """创建 Fn+Command 热键（macOS 推荐，避免与 Spotlight 冲突）。"""
+        return cls(key=Key.FN.value, modifiers={Key.CMD.value})
+
+    @classmethod
     def default_for_platform(cls) -> "HotkeyDef":
         """返回平台默认热键。"""
         import platform
 
         system = platform.system()
         if system == "Darwin":
-            return cls.command()  # macOS: Cmd+Space
+            return cls.fn_command()  # macOS: Fn+Cmd (避免与 Cmd+Space 冲突)
         else:
             return cls.ctrl()  # Windows/Linux: Ctrl+Space
 

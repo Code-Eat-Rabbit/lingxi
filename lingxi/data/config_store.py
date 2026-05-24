@@ -35,8 +35,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "ollama_host": "http://localhost:11434",
     },
     "hotkey": {
-        "record": "fn",
-        "style_picker": "fn_long",
+        "record": "fn+cmd",
+        "style_picker": "fn+cmd_long",
     },
     "emotion": {
         "enabled": True,
