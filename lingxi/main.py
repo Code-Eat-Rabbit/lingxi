@@ -377,10 +377,16 @@ def main() -> None:
         k = k.lower()
         _pressed.add(k)
 
+        # 诊断：首次按键时打印所有已注册热键
+        if not hasattr(on_press, '_first_key_logged'):
+            on_press._first_key_logged = True
+            logger.info("pynput 捕获到首个按键: %s (当前按下: %s)", k, _pressed)
+
         if not _state['armed'] and RECORD_HOTKEY.issubset(_pressed):
             _state['armed'] = True
             _state['timer'] = _make_long_timer()
             _state['timer'].start(LONG_PRESS_MS)
+            logger.info("🎤 热键触发 — 开始录音")
 
     def on_release(key):
         try:
@@ -406,6 +412,17 @@ def main() -> None:
         listener = _kb.Listener(on_press=on_press, on_release=on_release)
         listener.start()
         logger.info("pynput 热键监听已启动 (Cmd+Shift+Space)")
+
+        # 5 秒后检测：如果没收到任何按键，警告权限问题
+        def _check_listener_health():
+            if not hasattr(on_press, '_first_key_logged'):
+                logger.warning(
+                    "⚠️ 5 秒内未捕获到任何按键！"
+                    " 请确保终端已获得「辅助功能」权限："
+                    " 系统设置 → 隐私与安全性 → 辅助功能 → 添加终端.app"
+                )
+                logger.info("在此期间可使用系统托盘菜单「🎤 开始录音」手动触发")
+        QTimer.singleShot(5000, _check_listener_health)
     except ImportError:
         logger.warning("pynput 未安装，请使用托盘菜单触发录音")
     except Exception as e:
