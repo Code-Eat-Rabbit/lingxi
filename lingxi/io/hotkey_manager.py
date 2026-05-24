@@ -330,11 +330,11 @@ class HotkeyManager:
                     # 长按已被 watcher 触发，忽略 release
                     pass
                 else:
-                    # 短按：直接触发
+                    # 按实际按住时长判定
                     try:
-                        state.callback(False)
+                        state.callback(is_long)
                     except Exception as exc:
-                        logger.error("热键回调异常 (short_press): %s", exc)
+                        logger.error("热键回调异常: %s", exc)
 
                 state.release_time = now
                 state.state = PressState.IDLE
@@ -384,12 +384,13 @@ class HotkeyManager:
     # ------------------------------------------------------------------
 
     def attach_pynput_listener(self) -> object:
-        """创建并启动 pynput GlobalHotKeys 监听器，返回 listener 对象。
+        """创建并启动 pynput keyboard.Listener，追踪按键按下/释放。
 
-        调用方需要自行 join() 或使用非阻塞模式。
+        与 GlobalHotKeys 不同，此方法使用原始 Listener 追踪 press/release，
+        从而支持「按住录音、松开停止」的交互范式。
 
         Returns:
-            pynput.keyboard.GlobalHotKeys: 监听器实例
+            pynput.keyboard.Listener: 监听器实例
 
         Raises:
             ImportError: pynput 未安装
@@ -398,44 +399,85 @@ class HotkeyManager:
             from pynput import keyboard
         except ImportError:
             raise ImportError(
-                "pynput 未安装。请运行: pip install pynput\n"
-                "或使用 HotkeyManager.on_key_press / on_key_release 手动喂入事件。"
+                "pynput 未安装。请运行: pip install pynput"
             )
 
-        combo_map: Dict[str, Callable] = {}
-        with self._lock:
-            for combo, state in self._hotkeys.items():
-                combo_map[combo] = self._make_pynput_handler(state)
+        # 当前按下的键集合
+        self._pressed_keys: set[str] = set()
+        # 已触发的热键 combo（防止重复触发 on_key_press）
+        self._triggered_combos: set[str] = set()
 
-        self._listener = keyboard.GlobalHotKeys(combo_map)
+        def _key_to_str(key) -> str:
+            """将 pynput Key 转为字符串。"""
+            if hasattr(key, 'name'):
+                return key.name
+            if hasattr(key, 'char') and key.char:
+                return key.char
+            return str(key).lower()
+
+        def on_press(key):
+            key_str = _key_to_str(key)
+            # 统一小写
+            k = key_str.lower()
+            self._pressed_keys.add(k)
+
+            # 检查是否匹配任一已注册热键
+            with self._lock:
+                for combo, state in self._hotkeys.items():
+                    if combo in self._triggered_combos:
+                        continue
+                    if self._combo_is_down(state.definition):
+                        self._triggered_combos.add(combo)
+                        self.on_key_press(
+                            state.definition.key,
+                            state.definition.modifiers,
+                        )
+                        break
+
+        def on_release(key):
+            key_str = _key_to_str(key)
+            k = key_str.lower()
+            self._pressed_keys.discard(k)
+
+            # 检查是否有热键的任一键被释放
+            released_combos = []
+            with self._lock:
+                for combo in list(self._triggered_combos):
+                    state = self._hotkeys.get(combo)
+                    if state and not self._combo_is_down(state.definition):
+                        released_combos.append(combo)
+
+            for combo in released_combos:
+                self._triggered_combos.discard(combo)
+                with self._lock:
+                    state = self._hotkeys.get(combo)
+                    if state:
+                        self.on_key_release(
+                            state.definition.key,
+                            state.definition.modifiers,
+                        )
+
+        self._listener = keyboard.Listener(
+            on_press=on_press,
+            on_release=on_release,
+        )
         self._listener.start()
-        logger.info("pynput GlobalHotKeys 已启动，注册 %d 个热键", len(combo_map))
+        logger.info("pynput keyboard.Listener 已启动，注册 %d 个热键", len(self._hotkeys))
         return self._listener
 
-    def _make_pynput_handler(self, state: HotkeyState):
-        """为 pynput 创建按键处理器。"""
-        def handler():
-            now = time.monotonic()
-
-            # 防抖
-            if now - state.last_trigger_time < self.DEBOUNCE_MS / 1000.0:
-                logger.debug("热键防抖中")
-                return
-
-            state.press_time = now
-            state.last_trigger_time = now
-
-            # 等待长按判定窗口
-            time.sleep(self.LONG_PRESS_THRESHOLD_MS / 1000.0)
-            hold_duration = (time.monotonic() - state.press_time) * 1000
-            is_long = hold_duration >= self.LONG_PRESS_THRESHOLD_MS
-
-            try:
-                state.callback(is_long)
-            except Exception as exc:
-                logger.error("热键回调异常: %s", exc)
-
-        return handler
+    def _combo_is_down(self, hotkey: HotkeyDef) -> bool:
+        """检查热键的所有修饰键和主键是否都在按下状态。"""
+        if not hasattr(self, '_pressed_keys'):
+            return False
+        pressed = self._pressed_keys
+        # 所有修饰键必须按下
+        for mod in hotkey.modifiers:
+            if mod.lower() not in pressed:
+                return False
+        # 主键必须按下
+        if hotkey.key.lower() not in pressed:
+            return False
+        return True
 
     def __enter__(self) -> "HotkeyManager":
         self.start()
